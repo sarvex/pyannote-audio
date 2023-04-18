@@ -22,6 +22,9 @@
 
 from .segmentation.multilabel import MultiLabelSegmentation  # isort:skip
 from .segmentation.speaker_diarization import SpeakerDiarization  # isort:skip
+from .segmentation.guided_speaker_diarization import (  # isort:skip
+    GuidedSpeakerDiarization,
+)
 from .segmentation.voice_activity_detection import VoiceActivityDetection  # isort:skip
 from .segmentation.overlapped_speech_detection import (  # isort:skip
     OverlappedSpeechDetection,
@@ -41,4 +44,5 @@ __all__ = [
     "MultiLabelSegmentation",
     "SpeakerEmbedding",
     "Segmentation",
+    "GuidedSpeakerDiarization",
 ]
