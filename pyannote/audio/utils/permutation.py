@@ -22,21 +22,25 @@
 
 
 import math
+from functools import partial, singledispatch
 from typing import Callable, List, Optional, Tuple
-from functools import singledispatch, partial
 
 import networkx as nx
 import numpy as np
-from scipy.optimize import linear_sum_assignment
-
 import torch
 import torch.nn.functional as F
-
 from pyannote.core import SlidingWindowFeature
+from scipy.optimize import linear_sum_assignment
 
 
 @singledispatch
-def permutate(y1, y2, cost_func: Optional[Callable] = None, return_cost: bool = False):
+def permutate(
+    y1,
+    y2,
+    weight: torch.Tensor = None,
+    cost_func: Optional[Callable] = None,
+    return_cost: bool = False,
+):
     """Find cost-minimizing permutation
 
     Parameters
@@ -45,6 +49,8 @@ def permutate(y1, y2, cost_func: Optional[Callable] = None, return_cost: bool = 
         (batch_size, num_samples, num_classes_1)
     y2 : np.ndarray or torch.Tensor
         (num_samples, num_classes_2) or (batch_size, num_samples, num_classes_2)
+    weight : np.ndarray or torch.Tensor, optional
+        (batch_size, num_samples, 1)
     cost_func : callable
         Takes two (num_samples, num_classes) sequences and returns (num_classes, ) pairwise cost.
         Defaults to computing mean squared error.
@@ -65,40 +71,54 @@ def permutate(y1, y2, cost_func: Optional[Callable] = None, return_cost: bool = 
     raise TypeError()
 
 
-def mse_cost_func(Y, y, **kwargs):
+def mse_cost_func(Y, y, weight: torch.Tensor = None, **kwargs):
     """Compute class-wise mean-squared error
 
     Parameters
     ----------
     Y, y : (num_frames, num_classes) torch.tensor
+    weight : (num_frames, 1) torch.tensor
 
     Returns
     -------
     mse : (num_classes, ) torch.tensor
         Mean-squared error
     """
-    return torch.mean(F.mse_loss(Y, y, reduction="none"), axis=0)
+
+    mse = F.mse_loss(Y, y, reduction="none")
+
+    if weight is None:
+        return torch.mean(mse, axis=0)
+    else:
+        return torch.sum(mse * weight, axis=0) / (weight.sum() + 1e-8)
 
 
-def mae_cost_func(Y, y, **kwargs):
+def mae_cost_func(Y, y, weight: torch.Tensor = None, **kwargs):
     """Compute class-wise mean absolute difference error
 
     Parameters
     ----------
     Y, y: (num_frames, num_classes) torch.tensor
+    weight : (num_frames, 1) torch.tensor
 
     Returns
     -------
     mae : (num_classes, ) torch.tensor
         Mean absolute difference error
     """
-    return torch.mean(torch.abs(Y - y), axis=0)
+    mae = torch.abs(Y - y)
+
+    if weight is None:
+        return torch.mean(mae, axis=0)
+    else:
+        return torch.sum(mae * weight, axis=0) / (weight.sum() + 1e-8)
 
 
 @permutate.register
 def permutate_torch(
     y1: torch.Tensor,
     y2: torch.Tensor,
+    weight: torch.Tensor = None,
     cost_func: Optional[Callable] = None,
     return_cost: bool = False,
 ) -> Tuple[torch.Tensor, List[Tuple[int]]]:
@@ -109,12 +129,26 @@ def permutate_torch(
         y2 = y2.expand(batch_size, -1, -1)
 
     if len(y2.shape) != 3:
-        msg = "Incorrect shape: should be (batch_size, num_frames, num_classes)."
+        msg = "Incorrect y2 shape: should be (batch_size, num_frames, num_classes)."
         raise ValueError(msg)
 
     batch_size_, num_samples_, num_classes_2 = y2.shape
     if batch_size != batch_size_ or num_samples != num_samples_:
         msg = f"Shape mismatch: {tuple(y1.shape)} vs. {tuple(y2.shape)}."
+        raise ValueError(msg)
+
+    if weight is None:
+        weight = torch.ones(
+            batch_size, num_samples, 1, device=y1.device, dtype=y1.dtype
+        )
+
+    if len(weight.shape) != 3 or weight.shape[-1] != 1:
+        msg = "Incorrect weight shape: should be (batch_size, num_frames, 1)."
+        raise ValueError(msg)
+
+    batch_size_, num_samples_, _ = weight.shape
+    if batch_size != batch_size_ or num_samples != num_samples_:
+        msg = f"Shape mismatch: {tuple(y1.shape)} vs. {tuple(weight.shape)}."
         raise ValueError(msg)
 
     if cost_func is None:
@@ -128,13 +162,17 @@ def permutate_torch(
 
     permutated_y2 = torch.zeros(y1.shape, device=y2.device, dtype=y2.dtype)
 
-    for b, (y1_, y2_) in enumerate(zip(y1, y2)):
+    for b, (y1_, y2_, w_) in enumerate(zip(y1, y2, weight)):
         # y1_ is (num_samples, num_classes_1)-shaped
         # y2_ is (num_samples, num_classes_2)-shaped
+        # w_ is (num_samples, 1)-shaped
+
         with torch.no_grad():
             cost = torch.stack(
                 [
-                    cost_func(y2_, y1_[:, i : i + 1].expand(-1, num_classes_2))
+                    cost_func(
+                        y2_, y1_[:, i : i + 1].expand(-1, num_classes_2), weight=w_
+                    )
                     for i in range(num_classes_1)
                 ],
             )
@@ -169,6 +207,7 @@ def permutate_torch(
 def permutate_numpy(
     y1: np.ndarray,
     y2: np.ndarray,
+    weight: np.ndarray = None,
     cost_func: Optional[Callable] = None,
     return_cost: bool = False,
 ) -> Tuple[np.ndarray, List[Tuple[int]]]:
@@ -176,6 +215,7 @@ def permutate_numpy(
     output = permutate(
         torch.from_numpy(y1),
         torch.from_numpy(y2),
+        weight=None if weight is None else torch.from_numpy(weight),
         cost_func=cost_func,
         return_cost=return_cost,
     )
@@ -188,6 +228,7 @@ def permutate_numpy(
     return permutated_y2.numpy(), permutations
 
 
+# TODO: remove
 def build_permutation_graph(
     segmentations: SlidingWindowFeature,
     onset: float = 0.5,
