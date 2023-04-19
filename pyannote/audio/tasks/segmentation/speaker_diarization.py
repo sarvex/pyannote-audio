@@ -117,11 +117,6 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
     "End-To-End Speaker Segmentation for Overlap-Aware Resegmentation."
     Proc. Interspeech 2021
 
-    Zhihao Du, Shiliang Zhang, Siqi Zheng, and Zhijie Yan
-    "Speaker Embedding-aware Neural Diarization: an Efficient Framework for Overlapping
-    Speech Diarization in Meeting Scenarios"
-    https://arxiv.org/abs/2203.09767
-
     """
 
     def __init__(
@@ -536,7 +531,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
 
         # log effective batch size
         self.model.log(
-            f"{self.logging_prefix}BatchSize",
+            "EffectiveBatchSize",
             keep.sum(),
             prog_bar=False,
             logger=True,
@@ -590,7 +585,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
             )
 
         self.model.log(
-            f"{self.logging_prefix}TrainSegLoss",
+            "TrainSegLoss",
             seg_loss,
             on_step=False,
             on_epoch=True,
@@ -616,7 +611,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
                 )
 
             self.model.log(
-                f"{self.logging_prefix}TrainVADLoss",
+                "TrainVADLoss",
                 vad_loss,
                 on_step=False,
                 on_epoch=True,
@@ -627,7 +622,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
         loss = seg_loss + vad_loss
 
         self.model.log(
-            f"{self.logging_prefix}TrainLoss",
+            "TrainLoss",
             loss,
             on_step=False,
             on_epoch=True,
@@ -724,7 +719,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
             )
 
         self.model.log(
-            f"{self.logging_prefix}ValSegLoss",
+            "ValSegLoss",
             seg_loss,
             on_step=False,
             on_epoch=True,
@@ -750,7 +745,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
                 )
 
             self.model.log(
-                f"{self.logging_prefix}ValVADLoss",
+                "ValVADLoss",
                 vad_loss,
                 on_step=False,
                 on_epoch=True,
@@ -761,7 +756,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
         loss = seg_loss + vad_loss
 
         self.model.log(
-            f"{self.logging_prefix}ValLoss",
+            "ValLoss",
             loss,
             on_step=False,
             on_epoch=True,
@@ -860,13 +855,13 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
         for logger in self.model.loggers:
             if isinstance(logger, TensorBoardLogger):
                 logger.experiment.add_figure(
-                    f"{self.logging_prefix}ValSamples", fig, self.model.current_epoch
+                    "ValSamples", fig, self.model.current_epoch
                 )
             elif isinstance(logger, MLFlowLogger):
                 logger.experiment.log_figure(
                     run_id=logger.run_id,
                     figure=fig,
-                    artifact_file=f"{self.logging_prefix}ValSamples_epoch{self.model.current_epoch}.png",
+                    artifact_file=f"ValSamples_epoch{self.model.current_epoch}.png",
                 )
 
         plt.close(fig)
