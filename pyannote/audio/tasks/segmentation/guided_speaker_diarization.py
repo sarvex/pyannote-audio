@@ -234,7 +234,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         Returns
         -------
         y : torch.Tensor
-            Collated target tensor of shape (num_frames, self.max_speakers_per_chunk)
+            Collated target tensor of shape (batch_size, num_frames, self.max_speakers_per_chunk)
             If one chunk has more than `self.max_speakers_per_chunk` speakers, we keep
             the max_speakers_per_chunk most talkative ones. If it has less, we pad with
             zeros (artificial inactive speakers).
@@ -242,12 +242,14 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
 
         collated_y = []
         for b in batch:
+
             y = b["y"].data
             num_speakers = len(b["y"].labels)
+
+            # keep only the most talkative speakers
             if num_speakers > self.max_speakers_per_chunk:
                 # sort speakers in descending talkativeness order
                 indices = np.argsort(-np.sum(y, axis=0), axis=0)
-                # keep only the most talkative speakers
                 y = y[:, indices[: self.max_speakers_per_chunk]]
 
                 # TODO: we should also sort the speaker labels in the same way
@@ -264,6 +266,11 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
                 # we have exactly the right number of speakers
                 pass
 
+            # shuffle speaker indices (to avoid having them sorted in talkativeness decreasing order) as
+            # the model might otherwise infer prior probabilities from the order of the speakers. we do
+            # not want this information (partly computed from the second half of the chunk) to leak.
+            np.random.shuffle(y.T)
+
             collated_y.append(y)
 
         return torch.from_numpy(np.stack(collated_y))
@@ -275,7 +282,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
 
         # collate y
         collated_y = self.collate_y(batch)
-        batch_size, num_frames, num_spealers = collated_y.shape
+        batch_size, num_frames, _ = collated_y.shape
         half_batch_size = batch_size // 2
         half_num_frames = num_frames // 2
 
