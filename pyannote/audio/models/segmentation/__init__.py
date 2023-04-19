@@ -21,5 +21,6 @@
 # SOFTWARE.
 
 from .PyanNet import PyanNet
+from .Transformer import Transformer
 
-__all__ = ["PyanNet"]
+__all__ = ["PyanNet", "Transformer"]
