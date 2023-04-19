@@ -72,6 +72,11 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         When provided, training samples are sampled uniformly with respect to that key.
         For instance, setting `balance` to "database" will make sure that each database
         will be equally represented in the training samples.
+    freedom : float, optional
+        Controls how much freedom the model is allowed regarding the provided guide.
+        0.0 means that the model is forced to follow the guide exactly.
+        1.0 means that the model is free to ignore the guide completely.
+        Defaults to 0.5.
     batch_size : int, optional
         Number of training samples per batch. Defaults to 32.
     num_workers : int, optional
@@ -96,6 +101,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         max_speakers_per_chunk: int = 3,
         max_speakers_per_frame: int = 2,
         balance: Text = None,
+        freedom: float = 0.5,
         batch_size: int = 32,
         num_workers: int = None,
         pin_memory: bool = False,
@@ -121,6 +127,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         self.max_speakers_per_chunk = max_speakers_per_chunk
         self.max_speakers_per_frame = max_speakers_per_frame
         self.balance = balance
+        self.freedom = freedom
 
         self.specifications = Specifications(
             problem=Problem.MONO_LABEL_CLASSIFICATION,
@@ -459,7 +466,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
             logger=True,
         )
 
-        loss = seg_loss + guide_loss
+        loss = self.freedom * seg_loss + (1 - self.freedom) * guide_loss
 
         self.model.log(
             f"{self.logging_prefix}TrainLoss",

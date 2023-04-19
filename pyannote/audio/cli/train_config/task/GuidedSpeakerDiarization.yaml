@@ -1,6 +1,7 @@
 # @package _group_
 _target_: pyannote.audio.tasks.GuidedSpeakerDiarization
 duration: 10.0
+freedom: 0.5
 max_speakers_per_chunk: 3
 max_speakers_per_frame: 2
 batch_size: 32
