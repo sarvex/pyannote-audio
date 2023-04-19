@@ -717,13 +717,13 @@ class SegmentationTaskMixin:
         for logger in self.model.loggers:
             if isinstance(logger, TensorBoardLogger):
                 logger.experiment.add_figure(
-                    f"{self.logging_prefix}ValSamples", fig, self.model.current_epoch
+                    "ValSamples", fig, self.model.current_epoch
                 )
             elif isinstance(logger, MLFlowLogger):
                 logger.experiment.log_figure(
                     run_id=logger.run_id,
                     figure=fig,
-                    artifact_file=f"{self.logging_prefix}ValSamples_epoch{self.model.current_epoch}.png",
+                    artifact_file=f"ValSamples_epoch{self.model.current_epoch}.png",
                 )
 
         plt.close(fig)

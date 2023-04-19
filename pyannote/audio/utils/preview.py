@@ -313,7 +313,7 @@ def preview_training_samples(
     audio_file = {
         "waveform": waveform,
         "sample_rate": sample_rate,
-        "uri": model.task.logging_prefix + "TrainingSamples",
+        "uri": "TrainingSamples",
     }
 
     return preview(

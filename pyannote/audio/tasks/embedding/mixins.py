@@ -246,7 +246,7 @@ class SupervisedRepresentationLearningTaskMixin:
         loss = self.model.loss_func(self.model(X), y)
 
         self.model.log(
-            f"{self.logging_prefix}TrainLoss",
+            "TrainLoss",
             loss,
             on_step=False,
             on_epoch=True,
