@@ -347,9 +347,9 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
 
         # discretize chunk annotations at model output resolution
         start = np.maximum(chunk_annotations["start"], chunk.start) - chunk.start
-        start_idx = np.floor(start / resolution).astype(np.int)
+        start_idx = np.floor(start / resolution).astype(int)
         end = np.minimum(chunk_annotations["end"], chunk.end) - chunk.start
-        end_idx = np.ceil(end / resolution).astype(np.int)
+        end_idx = np.ceil(end / resolution).astype(int)
 
         # get list and number of labels for current scope
         labels = list(np.unique(chunk_annotations[label_scope_key]))
@@ -547,7 +547,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
 
         # corner case
         if not keep.any():
-            return {"loss": 0.0}
+            return None
 
         # forward pass
         prediction = self.model(waveform)
@@ -625,6 +625,10 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
             )
 
         loss = seg_loss + vad_loss
+
+        # skip batch if something went wrong for some reason
+        if torch.isnan(loss):
+            return None
 
         self.model.log(
             f"{self.logging_prefix}TrainLoss",
