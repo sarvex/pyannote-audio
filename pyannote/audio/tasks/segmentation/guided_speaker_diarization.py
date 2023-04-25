@@ -132,6 +132,7 @@ class BaseGuide(BaseWaveformTransform):
             samples=samples,
             sample_rate=sample_rate,
             targets=guides.type(targets.dtype),
+            # targets=guides.type(torch.int8),
             target_rate=target_rate,
         )
 
@@ -187,10 +188,10 @@ class FirstHalfGuide(BaseGuide):
 
 
 class RandomFrameGuide(BaseGuide):
-    def __init__(self, p: float = 0.5, min_ratio: float = 0.0, max_ratio: float = 0.5):
+    def __init__(self, p: float = 0.5, min_frames: int = 1, max_frames: int = 10):
         super().__init__(p=p)
-        self.min_ratio = min_ratio
-        self.max_ratio = max_ratio
+        self.min_frames = min_frames
+        self.max_frames = max_frames
 
     def randomize_parameters(
         self,
@@ -200,17 +201,17 @@ class RandomFrameGuide(BaseGuide):
         target_rate: Optional[int] = None,
     ):
         batch_size, num_channels, num_frames, _ = targets.shape
-
-        ratio = self.min_ratio + random.random() * (self.max_ratio - self.min_ratio)
-        num_guided_frames = int(ratio * num_frames)
-        guided_frames_idx = random.sample(range(num_frames), num_guided_frames)
-
         guided = torch.zeros(
             (batch_size, num_channels, num_frames),
             dtype=torch.bool,
             device=targets.device,
         )
-        guided[:, :, guided_frames_idx] = 1
+
+        for b in range(batch_size):
+            num_guided_frames = random.randint(self.min_frames, self.max_frames)
+            guided_frames_idx = random.sample(range(num_frames), num_guided_frames)
+            guided[b, :, guided_frames_idx] = 1
+
         self.transform_parameters["guided"] = guided
 
 
@@ -292,10 +293,12 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         # 25% of training samples are guided by random frames for use in interactive mode
         self.guidance = OneOf(
             [
+                NoGuide(p=1.0),
+                NoGuide(p=1.0),
                 FirstHalfGuide(p=1.0),
-                RandomFrameGuide(p=1.0, min_ratio=0.1, max_ratio=0.25),
+                RandomFrameGuide(p=1.0, min_frames=1, max_frames=10),
             ],
-            p=0.5,
+            p=1.0,
             output_type="dict",
         )
 
@@ -460,7 +463,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         guide = self.guidance(
             samples=collated_X,
             sample_rate=self.model.hparams.sample_rate,
-            targets=collated_y.unsqueeze(1),
+            targets=collated_y.unsqueeze(1).type(torch.int8),
         ).targets.squeeze(1)
 
         # collate metadata
