@@ -21,7 +21,8 @@
 # SOFTWARE.
 
 import math
-from typing import Dict, Sequence, Text, Union
+import random
+from typing import Dict, Optional, Sequence, Text, Union
 
 import numpy as np
 import torch
@@ -31,7 +32,9 @@ from pyannote.core import Segment, SlidingWindow, SlidingWindowFeature
 from pyannote.database.protocol import SpeakerDiarizationProtocol
 from pyannote.database.protocol.protocol import Scope, Subset
 from pytorch_lightning.loggers import MLFlowLogger, TensorBoardLogger
+from torch_audiomentations import OneOf
 from torch_audiomentations.core.transforms_interface import BaseWaveformTransform
+from torch_audiomentations.utils.object_dict import ObjectDict
 from torchmetrics import Metric
 
 from pyannote.audio.core.task import Problem, Resolution, Specifications, Task
@@ -53,6 +56,162 @@ from pyannote.audio.utils.powerset import Powerset
 
 Subsets = list(Subset.__args__)
 Scopes = list(Scope.__args__)
+
+
+class BaseGuide(BaseWaveformTransform):
+    """Guide generator for training guided speaker diarization
+
+    This is a hack built on top of torch-audiomentations.
+    It will modify the "target" so they can be used as guide.
+
+    Usage
+    -----
+
+    >>> strategy = WhateverGuideStrategy()
+    >>> guide = strategy(samples, sample_rate=16000, target=target).target
+    """
+
+    supported_modes = {"per_example", "per_channel"}
+
+    supports_multichannel = True
+    requires_sample_rate = False
+
+    supports_target = True
+    requires_target = True
+
+    def __init__(
+        self,
+        mode: str = "per_example",
+        p: float = 0.5,
+        p_mode: str = None,
+        sample_rate: int = None,
+        target_rate: int = None,
+        output_type: str = "dict",
+    ):
+        super().__init__(
+            mode=mode,
+            p=p,
+            p_mode=p_mode,
+            sample_rate=sample_rate,
+            target_rate=target_rate,
+            output_type=output_type,
+        )
+        self.training = True
+
+    def randomize_parameters(
+        self,
+        samples: torch.Tensor = None,
+        sample_rate: Optional[int] = None,
+        targets: Optional[torch.Tensor] = None,
+        target_rate: Optional[int] = None,
+    ):
+        batch_size, num_channels, num_frames, num_speakers = targets.shape
+        self.transform_parameters["guided"] = torch.zeros(
+            (batch_size, num_channels, num_frames),
+            dtype=torch.bool,
+            device=targets.device,
+        )
+
+    def apply_transform(
+        self,
+        samples: torch.Tensor = None,
+        sample_rate: Optional[int] = None,
+        targets: Optional[torch.Tensor] = None,
+        target_rate: Optional[int] = None,
+    ) -> ObjectDict:
+        # convert from target space {0, 1} to guide space {-1, 1}
+        guides = 2 * (targets - 0.5)
+
+        # obtain boolean mask indicating which frames are guided
+        guided = self.transform_parameters["guided"]
+
+        # mark unguided frames as 0.0
+        guides[~guided] = 0.0
+
+        return ObjectDict(
+            samples=samples,
+            sample_rate=sample_rate,
+            targets=guides.type(targets.dtype),
+            target_rate=target_rate,
+        )
+
+
+class NoGuide(BaseGuide):
+    def randomize_parameters(
+        self,
+        samples: torch.Tensor = None,
+        sample_rate: Optional[int] = None,
+        targets: Optional[torch.Tensor] = None,
+        target_rate: Optional[int] = None,
+    ):
+        batch_size, num_channels, num_frames, _ = targets.shape
+        self.transform_parameters["guided"] = torch.zeros(
+            (batch_size, num_channels, num_frames),
+            dtype=torch.bool,
+            device=targets.device,
+        )
+
+
+class FullGuide(BaseGuide):
+    def randomize_parameters(
+        self,
+        samples: torch.Tensor = None,
+        sample_rate: Optional[int] = None,
+        targets: Optional[torch.Tensor] = None,
+        target_rate: Optional[int] = None,
+    ):
+        batch_size, num_channels, num_frames, _ = targets.shape
+        self.transform_parameters["guided"] = torch.ones(
+            (batch_size, num_channels, num_frames),
+            dtype=torch.bool,
+            device=targets.device,
+        )
+
+
+class FirstHalfGuide(BaseGuide):
+    def randomize_parameters(
+        self,
+        samples: torch.Tensor = None,
+        sample_rate: Optional[int] = None,
+        targets: Optional[torch.Tensor] = None,
+        target_rate: Optional[int] = None,
+    ):
+        batch_size, num_channels, num_frames, _ = targets.shape
+        guided = torch.zeros(
+            (batch_size, num_channels, num_frames),
+            dtype=torch.bool,
+            device=targets.device,
+        )
+        guided[:, :, : (num_frames // 2)] = 1
+        self.transform_parameters["guided"] = guided
+
+
+class RandomFrameGuide(BaseGuide):
+    def __init__(self, p: float = 0.5, min_ratio: float = 0.0, max_ratio: float = 0.5):
+        super().__init__(p=p)
+        self.min_ratio = min_ratio
+        self.max_ratio = max_ratio
+
+    def randomize_parameters(
+        self,
+        samples: torch.Tensor = None,
+        sample_rate: Optional[int] = None,
+        targets: Optional[torch.Tensor] = None,
+        target_rate: Optional[int] = None,
+    ):
+        batch_size, num_channels, num_frames, _ = targets.shape
+
+        ratio = self.min_ratio + random.random() * (self.max_ratio - self.min_ratio)
+        num_guided_frames = int(ratio * num_frames)
+        guided_frames_idx = random.sample(range(num_frames), num_guided_frames)
+
+        guided = torch.zeros(
+            (batch_size, num_channels, num_frames),
+            dtype=torch.bool,
+            device=targets.device,
+        )
+        guided[:, :, guided_frames_idx] = 1
+        self.transform_parameters["guided"] = guided
 
 
 class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
@@ -108,7 +267,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         augmentation: BaseWaveformTransform = None,
         metric: Union[Metric, Sequence[Metric], Dict[str, Metric]] = None,
     ):
-
         super().__init__(
             protocol,
             duration=duration,
@@ -128,6 +286,18 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         self.max_speakers_per_frame = max_speakers_per_frame
         self.balance = balance
         self.freedom = freedom
+
+        # 50% of training samples have no guide (p=0.5) for use in autonomous mode
+        # 25% of training samples are guided by their first half for use in streaming mode
+        # 25% of training samples are guided by random frames for use in interactive mode
+        self.guidance = OneOf(
+            [
+                FirstHalfGuide(p=1.0),
+                RandomFrameGuide(p=1.0, min_ratio=0.1, max_ratio=0.25),
+            ],
+            p=0.5,
+            output_type="dict",
+        )
 
         self.specifications = Specifications(
             problem=Problem.MONO_LABEL_CLASSIFICATION,
@@ -249,7 +419,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
 
         collated_y = []
         for b in batch:
-
             y = b["y"].data
             num_speakers = len(b["y"].labels)
 
@@ -258,8 +427,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
                 # sort speakers in descending talkativeness order
                 indices = np.argsort(-np.sum(y, axis=0), axis=0)
                 y = y[:, indices[: self.max_speakers_per_chunk]]
-
-                # TODO: we should also sort the speaker labels in the same way
 
             elif num_speakers < self.max_speakers_per_chunk:
                 # create inactive speakers by zero padding
@@ -283,24 +450,18 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         return torch.from_numpy(np.stack(collated_y))
 
     def collate_fn(self, batch, stage="train"):
-
         # collate X
         collated_X = self.collate_X(batch)
 
         # collate y
         collated_y = self.collate_y(batch)
-        batch_size, num_frames, _ = collated_y.shape
-        half_batch_size = batch_size // 2
-        half_num_frames = num_frames // 2
 
-        # -1 when speaker is inactive, 1 when active
-        guide = 2 * (collated_y - 0.5)
-
-        # first half of the batch is unguided (0)
-        guide[:half_batch_size] = 0.0
-
-        # second half of the batch is guided but we only keep the guide on (first) 50% of all frames
-        guide[half_batch_size:, half_num_frames:] = 0.0
+        # generate guide
+        guide = self.guidance(
+            samples=collated_X,
+            sample_rate=self.model.hparams.sample_rate,
+            targets=collated_y.unsqueeze(1),
+        ).targets.squeeze(1)
 
         # collate metadata
         collated_meta = self.collate_meta(batch)
@@ -432,7 +593,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         )
 
         if torch.any(guide != 0.0):
-
             # turn {-1, +1} into {0, 1}
             guide_multilabel = (guide + 1) * 0.5
 
@@ -603,7 +763,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
 
         # plot each sample
         for sample_idx in range(num_samples):
-
             # find where in the grid it should be plotted
             row_idx = sample_idx // nrows
             col_idx = sample_idx % ncols
