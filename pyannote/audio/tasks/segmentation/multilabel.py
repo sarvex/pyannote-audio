@@ -187,9 +187,9 @@ class MultiLabelSegmentation(SegmentationTaskMixin, Task):
 
         # discretize chunk annotations at model output resolution
         start = np.maximum(chunk_annotations["start"], chunk.start) - chunk.start
-        start_idx = np.floor(start / resolution).astype(np.int)
+        start_idx = np.floor(start / resolution).astype(int)
         end = np.minimum(chunk_annotations["end"], chunk.end) - chunk.start
-        end_idx = np.ceil(end / resolution).astype(np.int)
+        end_idx = np.ceil(end / resolution).astype(int)
 
         # frame-level targets (-1 for un-annotated classes)
         y = -np.ones((num_frames, len(self.classes)), dtype=np.int8)
@@ -222,6 +222,10 @@ class MultiLabelSegmentation(SegmentationTaskMixin, Task):
         y_pred = y_pred[mask]
         y_true = y_true[mask]
         loss = F.binary_cross_entropy(y_pred, y_true.type(torch.float))
+
+        # skip batch if something went wrong for some reason
+        if torch.isnan(loss):
+            return None
 
         self.model.log(
             f"{self.logging_prefix}TrainLoss",
