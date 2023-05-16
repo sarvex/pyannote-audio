@@ -439,12 +439,12 @@ class StreamingSpeakerDiarization(SegmentationTaskMixin, Task):
         batch_size, num_frames, _ = prediction.shape
         # (batch_size, num_frames, num_classes)
 
-        # to account of requested algorithmic latency, we drop the first
-        # (resp. last) frames from the target (resp. prediction) before
+        # to account for requested algorithmic latency, we drop the first
+        # (resp. last) frames from the prediction (resp. target) before
         # loss computation
         num_latency_frames = math.ceil(num_frames * self.latency / self.duration)
-        target = target[:, num_latency_frames:]
-        prediction = prediction[:, : num_frames - num_latency_frames]
+        prediction = prediction[:, num_latency_frames:]
+        target = target[:, : num_frames - num_latency_frames]
 
         powerset = torch.nn.functional.one_hot(
             torch.argmax(prediction, dim=-1),
@@ -506,12 +506,12 @@ class StreamingSpeakerDiarization(SegmentationTaskMixin, Task):
         prediction = self.model(waveform)
         _, num_frames, _ = prediction.shape
 
-        # to account of requested algorithmic latency, we drop the first
-        # (resp. last) frames from the target (resp. prediction) before
+        # to account for requested algorithmic latency, we drop the first
+        # (resp. last) frames from the prediction (resp. target) before
         # loss computation
         num_latency_frames = math.ceil(num_frames * self.latency / self.duration)
-        target = target[:, num_latency_frames:]
-        prediction = prediction[:, : num_frames - num_latency_frames]
+        prediction = prediction[:, num_latency_frames:]
+        target = target[:, : num_frames - num_latency_frames]
 
         powerset = torch.nn.functional.one_hot(
             torch.argmax(prediction, dim=-1),
