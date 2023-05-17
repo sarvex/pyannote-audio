@@ -42,7 +42,6 @@ class SincNet(nn.Module):
                 affine=True,
                 eps=1e-5,
                 momentum=0.1,
-                affine=True,
                 track_running_stats=True,
             )
 
