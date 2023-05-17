@@ -31,7 +31,26 @@ from asteroid_filterbanks import Encoder, ParamSincFB
 
 
 class SincNet(nn.Module):
-    def __init__(self, sample_rate: int = 16000, stride: int = 1):
+    @staticmethod
+    def get_norm(num_features: int, norm: str = "instance"):
+        if norm == "instance":
+            return nn.InstanceNorm1d(num_features, affine=True)
+
+        elif norm == "batch":
+            return nn.BatchNorm1d(
+                num_features,
+                affine=True,
+                eps=1e-5,
+                momentum=0.1,
+                affine=True,
+                track_running_stats=True,
+            )
+
+            raise ValueError(f"Unsupported norm: {norm}")
+
+    def __init__(
+        self, sample_rate: int = 16000, stride: int = 1, norm: int = "instance"
+    ):
         super().__init__()
 
         if sample_rate != 16000:
@@ -40,8 +59,9 @@ class SincNet(nn.Module):
             # kernel_size by (sample_rate / 16000). but this needs to be double-checked.
 
         self.stride = stride
+        self.norm = norm
 
-        self.wav_norm1d = nn.InstanceNorm1d(1, affine=True)
+        self.wav_norm1d = self.get_norm(1, norm=self.norm)
 
         self.conv1d = nn.ModuleList()
         self.pool1d = nn.ModuleList()
@@ -60,15 +80,15 @@ class SincNet(nn.Module):
             )
         )
         self.pool1d.append(nn.MaxPool1d(3, stride=3, padding=0, dilation=1))
-        self.norm1d.append(nn.InstanceNorm1d(80, affine=True))
+        self.norm1d.append(self.get_norm(80, norm=self.norm))
 
         self.conv1d.append(nn.Conv1d(80, 60, 5, stride=1))
         self.pool1d.append(nn.MaxPool1d(3, stride=3, padding=0, dilation=1))
-        self.norm1d.append(nn.InstanceNorm1d(60, affine=True))
+        self.norm1d.append(self.get_norm(60, norm=self.norm))
 
         self.conv1d.append(nn.Conv1d(60, 60, 5, stride=1))
         self.pool1d.append(nn.MaxPool1d(3, stride=3, padding=0, dilation=1))
-        self.norm1d.append(nn.InstanceNorm1d(60, affine=True))
+        self.norm1d.append(self.get_norm(60, norm=self.norm))
 
     def forward(self, waveforms: torch.Tensor) -> torch.Tensor:
         """Pass forward
@@ -83,7 +103,6 @@ class SincNet(nn.Module):
         for c, (conv1d, pool1d, norm1d) in enumerate(
             zip(self.conv1d, self.pool1d, self.norm1d)
         ):
-
             outputs = conv1d(outputs)
 
             # https://github.com/mravanelli/SincNet/issues/4
