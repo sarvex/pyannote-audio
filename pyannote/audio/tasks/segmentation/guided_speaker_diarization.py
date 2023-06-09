@@ -28,7 +28,7 @@ import numpy as np
 import torch
 import torch.nn.functional
 from matplotlib import pyplot as plt
-from pyannote.core import Segment, SlidingWindow, SlidingWindowFeature
+from pyannote.core import Segment, SlidingWindowFeature
 from pyannote.database.protocol import SpeakerDiarizationProtocol
 from pyannote.database.protocol.protocol import Scope, Subset
 from pytorch_lightning.loggers import MLFlowLogger, TensorBoardLogger
@@ -354,13 +354,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         sample = dict()
         sample["X"], _ = self.model.audio.crop(file, chunk, duration=duration)
 
-        # use model introspection to predict how many frames it will output
-        # TODO: this should be cached
-        num_samples = sample["X"].shape[1]
-        num_frames, _ = self.model.introspection(num_samples)
-        resolution = duration / num_frames
-        frames = SlidingWindow(start=0.0, duration=resolution, step=resolution)
-
         # gather all annotations of current file
         annotations = self.annotations[self.annotations["file_id"] == file_id]
 
@@ -371,9 +364,11 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
 
         # discretize chunk annotations at model output resolution
         start = np.maximum(chunk_annotations["start"], chunk.start) - chunk.start
-        start_idx = np.floor(start / resolution).astype(np.int)
+        start_idx = np.floor(start / self.model.example_output.frames.step).astype(
+            np.int
+        )
         end = np.minimum(chunk_annotations["end"], chunk.end) - chunk.start
-        end_idx = np.ceil(end / resolution).astype(np.int)
+        end_idx = np.ceil(end / self.model.example_output.frames.step).astype(np.int)
 
         # get list and number of labels for current scope
         labels = list(np.unique(chunk_annotations[label_scope_key]))
@@ -383,7 +378,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
             pass
 
         # initial frame-level targets
-        y = np.zeros((num_frames, num_labels), dtype=np.uint8)
+        y = np.zeros((self.model.example_output.num_frames, num_labels), dtype=np.uint8)
 
         # map labels to indices
         mapping = {label: idx for idx, label in enumerate(labels)}
@@ -394,7 +389,9 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
             mapped_label = mapping[label]
             y[start:end, mapped_label] = 1
 
-        sample["y"] = SlidingWindowFeature(y, frames, labels=labels)
+        sample["y"] = SlidingWindowFeature(
+            y, self.model.example_output.frames, labels=labels
+        )
 
         metadata = self.metadata[file_id]
         sample["meta"] = {key: metadata[key] for key in metadata.dtype.names}
@@ -544,17 +541,6 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         target_multilabel = target_multilabel[keep]
         waveform = waveform[keep]
 
-        # log effective batch size
-        self.model.log(
-            f"{self.logging_prefix}BatchSize",
-            keep.sum(),
-            prog_bar=False,
-            logger=True,
-            on_step=False,
-            on_epoch=True,
-            reduce_fx="mean",
-        )
-
         # corner case
         if not keep.any():
             return {"loss": 0.0}
@@ -567,12 +553,8 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         soft_prediction_powerset = self.model(waveform, guide=guide)
 
         # permutate target in multilabel space and convert it to powerset space
-        hard_prediction_powerset = torch.nn.functional.one_hot(
-            torch.argmax(soft_prediction_powerset, dim=-1),
-            self.model.powerset.num_powerset_classes,
-        ).float()
         hard_prediction_multilabel = self.model.powerset.to_multilabel(
-            hard_prediction_powerset
+            soft_prediction_powerset
         )
         permutated_target_multilabel, _ = permutate(
             hard_prediction_multilabel, target_multilabel
@@ -587,7 +569,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         )
 
         self.model.log(
-            f"{self.logging_prefix}TrainSegLoss",
+            "loss/train/segmentation",
             seg_loss,
             on_step=False,
             on_epoch=True,
@@ -621,7 +603,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
             guide_loss = 0.0
 
         self.model.log(
-            f"{self.logging_prefix}TrainGuideLoss",
+            "loss/train/guide",
             guide_loss,
             on_step=False,
             on_epoch=True,
@@ -632,11 +614,11 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         loss = self.freedom * seg_loss + (1 - self.freedom) * guide_loss
 
         self.model.log(
-            f"{self.logging_prefix}TrainLoss",
+            "loss/train",
             loss,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
             logger=True,
         )
 
@@ -648,20 +630,20 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         """Returns diarization error rate and its components"""
 
         if self.specifications.powerset:
-            return [
-                DiarizationErrorRate(0.5),
-                SpeakerConfusionRate(0.5),
-                MissedDetectionRate(0.5),
-                FalseAlarmRate(0.5),
-            ]
+            return {
+                "DiarizationErrorRate": DiarizationErrorRate(0.5),
+                "DiarizationErrorRate/Confusion": SpeakerConfusionRate(0.5),
+                "DiarizationErrorRate/Miss": MissedDetectionRate(0.5),
+                "DiarizationErrorRate/FalseAlarm": FalseAlarmRate(0.5),
+            }
 
-        return [
-            OptimalDiarizationErrorRate(),
-            OptimalDiarizationErrorRateThreshold(),
-            OptimalSpeakerConfusionRate(),
-            OptimalMissedDetectionRate(),
-            OptimalFalseAlarmRate(),
-        ]
+        return {
+            "DiarizationErrorRate": OptimalDiarizationErrorRate(),
+            "DiarizationErrorRate/Threshold": OptimalDiarizationErrorRateThreshold(),
+            "DiarizationErrorRate/Confusion": OptimalSpeakerConfusionRate(),
+            "DiarizationErrorRate/Miss": OptimalMissedDetectionRate(),
+            "DiarizationErrorRate/FalseAlarm": OptimalFalseAlarmRate(),
+        }
 
     # TODO: no need to compute gradient in this method
     def validation_step(self, batch, batch_idx: int):
@@ -690,11 +672,7 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         prediction = self.model(waveform)
         batch_size, num_frames, _ = prediction.shape
 
-        powerset = torch.nn.functional.one_hot(
-            torch.argmax(prediction, dim=-1),
-            self.model.powerset.num_powerset_classes,
-        ).float()
-        multilabel = self.model.powerset.to_multilabel(powerset)
+        multilabel = self.model.powerset.to_multilabel(prediction)
         permutated_target, _ = permutate(multilabel, target)
 
         # FIXME: handle case where target have too many speakers?
@@ -705,19 +683,8 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
         seg_loss = self.segmentation_loss(prediction, permutated_target_powerset)
 
         self.model.log(
-            f"{self.logging_prefix}ValSegLoss",
+            "loss/val/segmentation",
             seg_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-            logger=True,
-        )
-
-        loss = seg_loss
-
-        self.model.log(
-            f"{self.logging_prefix}ValLoss",
-            loss,
             on_step=False,
             on_epoch=True,
             prog_bar=False,
@@ -791,14 +758,12 @@ class GuidedSpeakerDiarization(SegmentationTaskMixin, Task):
 
         for logger in self.model.loggers:
             if isinstance(logger, TensorBoardLogger):
-                logger.experiment.add_figure(
-                    f"{self.logging_prefix}ValSamples", fig, self.model.current_epoch
-                )
+                logger.experiment.add_figure("samples", fig, self.model.current_epoch)
             elif isinstance(logger, MLFlowLogger):
                 logger.experiment.log_figure(
                     run_id=logger.run_id,
                     figure=fig,
-                    artifact_file=f"{self.logging_prefix}ValSamples_epoch{self.model.current_epoch}.png",
+                    artifact_file=f"samples_epoch{self.model.current_epoch}.png",
                 )
 
         plt.close(fig)
