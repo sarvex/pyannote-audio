@@ -36,6 +36,7 @@ from pytorch_lightning.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
     RichProgressBar,
+    StochasticWeightAveraging,
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch_audiomentations.utils.config import from_dict as get_augmentation
@@ -110,7 +111,12 @@ def train(cfg: DictConfig) -> Optional[float]:
         # TODO: for fine-tuning and/or transfer learning, we start by fitting
         # TODO: task-dependent layers and gradully unfreeze more layers
         # TODO: callbacks.append(GraduallyUnfreeze(epochs_per_stage=1))
-        pass
+        swa = StochasticWeightAveraging(
+            1e-2,
+            swa_epoch_start=2,
+            annealing_epochs=10,
+        )
+        callbacks.append(swa)
 
     checkpoint = ModelCheckpoint(
         monitor=monitor,
