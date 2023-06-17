@@ -48,18 +48,17 @@ class TransferLearning(Callback):
         ]
 
         for layer in self.backbone_layers:
-            print("[TransferLearningCallback] freezing backbone layer '{layer}'")
+            print(f"[TransferLearningCallback] freezing backbone layer '{layer}'")
             model.freeze_by_name(layer)
 
         self._frozen_backbone = True
 
-    def on_train_epoch_end(self, trainer: Trainer, model: Model):
+    def on_train_epoch_start(self, trainer: Trainer, model: Model):
         """Unfreeze backbone layers"""
-        if self._frozen_backbone:
+        if self._frozen_backbone and trainer.current_epoch == 1:
             for layer in self.backbone_layers:
-                print("[TransferLearningCallback] unfreezing backbone layer '{layer}'")
+                print(f"[TransferLearningCallback] unfreezing backbone layer '{layer}'")
                 model.unfreeze_by_name(layer)
-            self._frozen_backbone = False
 
 
 class GraduallyUnfreeze(Callback):
