@@ -40,6 +40,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch_audiomentations.utils.config import from_dict as get_augmentation
 
+from pyannote.audio.core.callback import TransferLearning
 from pyannote.audio.core.io import get_torchaudio_info
 
 
@@ -106,11 +107,7 @@ def train(cfg: DictConfig) -> Optional[float]:
     ]
 
     if fine_tuning:
-        # TODO: configure layer freezing
-        # TODO: for fine-tuning and/or transfer learning, we start by fitting
-        # TODO: task-dependent layers and gradully unfreeze more layers
-        # TODO: callbacks.append(GraduallyUnfreeze(epochs_per_stage=1))
-        pass
+        callbacks.append(TransferLearning())
 
     checkpoint = ModelCheckpoint(
         monitor=monitor,

@@ -28,6 +28,40 @@ from pytorch_lightning.utilities.model_summary import ModelSummary
 from pyannote.audio import Model
 
 
+class TransferLearning(Callback):
+    """Freeze backbone layers during first epoch of transfer learning"""
+
+    def on_fit_start(self, trainer: Trainer, model: Model):
+        """Freeze backbone layers"""
+
+        self.task_layers = model.task_dependent
+
+        # do not freeze backbone if there is no task-dependent layer
+        # (e.g. when finetuning a model on the same task)
+        if not self.task_layers:
+            self._frozen_backbone = False
+
+        self.backbone_layers = [
+            layer
+            for layer, _ in reversed(ModelSummary(model, max_depth=1).named_modules)
+            if layer not in self.task_layers
+        ]
+
+        for layer in self.backbone_layers:
+            print("[TransferLearningCallback] freezing backbone layer '{layer}'")
+            model.freeze_by_name(layer)
+
+        self._frozen_backbone = True
+
+    def on_train_epoch_end(self, trainer: Trainer, model: Model):
+        """Unfreeze backbone layers"""
+        if self._frozen_backbone:
+            for layer in self.backbone_layers:
+                print("[TransferLearningCallback] unfreezing backbone layer '{layer}'")
+                model.unfreeze_by_name(layer)
+            self._frozen_backbone = False
+
+
 class GraduallyUnfreeze(Callback):
     """Gradually unfreeze layers
 
@@ -80,7 +114,6 @@ class GraduallyUnfreeze(Callback):
         self.schedule = schedule
 
     def on_fit_start(self, trainer: Trainer, model: Model):
-
         schedule = self.schedule
 
         task_specific_layers = model.task_dependent
