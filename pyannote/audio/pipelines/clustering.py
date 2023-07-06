@@ -30,6 +30,7 @@ from typing import Tuple
 import numpy as np
 from einops import rearrange
 from pyannote.core import SlidingWindow, SlidingWindowFeature
+from pyannote.core.utils.distance import pdist
 from pyannote.pipeline import Pipeline
 from pyannote.pipeline.parameter import Categorical, Integer, Uniform
 from scipy.cluster.hierarchy import fcluster, linkage
@@ -261,6 +262,7 @@ class BaseClustering(Pipeline):
             min_clusters,
             max_clusters,
             num_clusters=num_clusters,
+            chunk_idx=train_chunk_idx,
         )
 
         hard_clusters, soft_clusters, centroids = self.assign_embeddings(
@@ -318,6 +320,7 @@ class AgglomerativeClustering(BaseClustering):
         min_clusters: int,
         max_clusters: int,
         num_clusters: int = None,
+        **kwargs,
     ):
         """
 
@@ -464,6 +467,167 @@ class AgglomerativeClustering(BaseClustering):
         return clusters
 
 
+class AdaptiveAgglomerativeClustering(BaseClustering):
+    """Agglomerative clustering
+
+    Parameters
+    ----------
+    metric : {"cosine", "euclidean", ...}, optional
+        Distance metric to use. Defaults to "cosine".
+
+    Hyper-parameters
+    ----------------
+    method : {"average", "centroid", "complete", "median", "single", "ward"}
+        Linkage method.
+    threshold : float in range [0.0, 2.0]
+        Clustering threshold.
+    min_cluster_size : int in range [1, 20]
+        Minimum cluster size
+    """
+
+    def __init__(
+        self,
+        metric: str = "cosine",
+        max_num_embeddings: int = np.inf,
+        constrained_assignment: bool = False,
+    ):
+        super().__init__(
+            metric=metric,
+            max_num_embeddings=max_num_embeddings,
+            constrained_assignment=constrained_assignment,
+        )
+
+        self.max_threshold = Uniform(0.7, 1.0)  # assume unit-normalized embeddings
+        self.min_threshold = 0.6
+        self.constraint_threshold = Uniform(0.0, 0.5)
+        self.method = Categorical(
+            ["average", "centroid", "complete", "median", "single", "ward", "weighted"]
+        )
+
+        # minimum cluster size
+        self.min_cluster_size = Integer(1, 20)
+
+    def cluster(
+        self,
+        embeddings: np.ndarray,
+        min_clusters: int,
+        max_clusters: int,
+        num_clusters: int = None,
+        chunk_idx: np.ndarray = None,
+        **kwargs,
+    ):
+        """
+
+        Parameters
+        ----------
+        embeddings : (num_embeddings, dimension) array
+            Embeddings
+        min_clusters : int
+            Minimum number of clusters
+        max_clusters : int
+            Maximum number of clusters
+        num_clusters : int, optional
+            Actual number of clusters. Default behavior is to estimate it based
+            on values provided for `min_clusters`,  `max_clusters`, and `threshold`.
+
+        Returns
+        -------
+        clusters : (num_embeddings, ) array
+            0-indexed cluster indices.
+        """
+
+        num_embeddings, _ = embeddings.shape
+
+        # heuristic to reduce self.min_cluster_size when num_embeddings is very small
+        # (0.1 value is kind of arbitrary, though)
+        min_cluster_size = min(
+            self.min_cluster_size, max(1, round(0.1 * num_embeddings))
+        )
+
+        # linkage function will complain when there is just one embedding to cluster
+        if num_embeddings == 1:
+            return np.zeros((1,), dtype=np.uint8)
+
+        # centroid, median, and Ward method only support "euclidean" metric
+        # therefore we unit-normalize embeddings to somehow make them "euclidean"
+        if self.metric == "cosine" and self.method in ["centroid", "median", "ward"]:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                embeddings /= np.linalg.norm(embeddings, axis=-1, keepdims=True)
+            dendrogram: np.ndarray = linkage(
+                embeddings, method=self.method, metric="euclidean"
+            )
+
+        # other methods work just fine with any metric
+        else:
+            dendrogram: np.ndarray = linkage(
+                embeddings, method=self.method, metric=self.metric
+            )
+
+        same_chunk = pdist(chunk_idx, metric="equal")
+        num_constraints = np.sum(same_chunk)
+        if num_constraints == 0:
+            clusters = (
+                fcluster(dendrogram, self.max_threshold, criterion="distance") - 1
+            )
+
+        else:
+            # find iteration index that corresponds to the adaptive threshold bounds
+            max_iteration = np.argmin(np.abs(dendrogram[:, 2] - self.max_threshold))
+            min_iteration = np.argmin(np.abs(dendrogram[:, 2] - self.min_threshold))
+
+            # switch stopping criterion from "inter-cluster distance" stopping to "iteration index"
+            _dendrogram = np.copy(dendrogram)
+            _dendrogram[:, 2] = np.arange(num_embeddings - 1)
+
+            # traverse the dendrogram down from optimistic threshold
+            # until we do not break too many constraints
+
+            for iteration in np.arange(max_iteration, min_iteration, -1):
+                clusters = fcluster(_dendrogram, iteration, criterion="distance") - 1
+                same_cluster = pdist(clusters, metric="equal")
+                ratio_broken = np.sum(same_cluster & same_chunk) / num_constraints
+                if ratio_broken < self.constraint_threshold:
+                    break
+
+        # split clusters into two categories based on their number of items:
+        # large clusters vs. small clusters
+        cluster_unique, cluster_counts = np.unique(
+            clusters,
+            return_counts=True,
+        )
+        large_clusters = cluster_unique[cluster_counts >= min_cluster_size]
+        num_large_clusters = len(large_clusters)
+
+        if num_large_clusters == 0:
+            clusters[:] = 0
+            return clusters
+
+        small_clusters = cluster_unique[cluster_counts < min_cluster_size]
+        if len(small_clusters) == 0:
+            return clusters
+
+        # re-assign each small cluster to the most similar large cluster based on their respective centroids
+        large_centroids = np.vstack(
+            [
+                np.mean(embeddings[clusters == large_k], axis=0)
+                for large_k in large_clusters
+            ]
+        )
+        small_centroids = np.vstack(
+            [
+                np.mean(embeddings[clusters == small_k], axis=0)
+                for small_k in small_clusters
+            ]
+        )
+        centroids_cdist = cdist(large_centroids, small_centroids, metric=self.metric)
+        for small_k, large_k in enumerate(np.argmin(centroids_cdist, axis=0)):
+            clusters[clusters == small_clusters[small_k]] = large_clusters[large_k]
+
+        # re-number clusters from 0 to num_large_clusters
+        _, clusters = np.unique(clusters, return_inverse=True)
+        return clusters
+
+
 class OracleClustering(BaseClustering):
     """Oracle clustering"""
 
@@ -551,4 +715,5 @@ class OracleClustering(BaseClustering):
 
 class Clustering(Enum):
     AgglomerativeClustering = AgglomerativeClustering
+    AdaptiveAgglomerativeClustering = AdaptiveAgglomerativeClustering
     OracleClustering = OracleClustering
