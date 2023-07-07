@@ -563,14 +563,12 @@ class AdaptiveAgglomerativeClustering(BaseClustering):
                 embeddings, method=self.method, metric=self.metric
             )
 
+        clusters = fcluster(dendrogram, self.max_threshold, criterion="distance") - 1
+
         same_chunk = pdist(chunk_idx, metric="equal")
         num_constraints = np.sum(same_chunk)
-        if num_constraints == 0:
-            clusters = (
-                fcluster(dendrogram, self.max_threshold, criterion="distance") - 1
-            )
 
-        else:
+        if num_constraints > 0:
             # find iteration index that corresponds to the adaptive threshold bounds
             max_iteration = np.argmin(np.abs(dendrogram[:, 2] - self.max_threshold))
             min_iteration = np.argmin(np.abs(dendrogram[:, 2] - self.min_threshold))
