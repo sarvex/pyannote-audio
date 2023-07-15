@@ -223,6 +223,4 @@ class MultiLabelSegmentation(Pipeline):
         return IdentificationErrorRate()
 
     def get_direction(self):
-        if self.fscore:
-            return "maximize"
-        return "minimize"
+        return "maximize" if self.fscore else "minimize"

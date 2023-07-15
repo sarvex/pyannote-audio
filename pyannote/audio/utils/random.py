@@ -51,11 +51,7 @@ def create_rng_for_worker(epoch: int) -> Random:
 
     worker_info = torch.utils.data.get_worker_info()
 
-    if worker_info is None:
-        worker_id = 0
-    else:
-        worker_id = worker_info.id
-
+    worker_id = 0 if worker_info is None else worker_info.id
     rng.seed(hash((global_seed, worker_id, local_rank, node_rank, epoch)))
 
     return rng

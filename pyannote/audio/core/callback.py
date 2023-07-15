@@ -94,7 +94,7 @@ class GraduallyUnfreeze(Callback):
             schedule = backbone_layers
 
         if isinstance(schedule, List):
-            _schedule = dict()
+            _schedule = {}
             for depth, layers in enumerate(schedule):
                 layers = layers if isinstance(layers, List) else [layers]
                 for layer in layers:

@@ -186,9 +186,7 @@ def pipeline(
     recipe_dir = Path(__file__).resolve().parent
     common_dir = recipe_dir.parent / "common"
     controller_js = common_dir / "controller.js"
-    with open(controller_js) as txt:
-        javascript = txt.read()
-
+    javascript = Path(controller_js).read_text()
     # TODO: improve this part
     template = common_dir / "instructions.html"
     png = common_dir / "commands.png"

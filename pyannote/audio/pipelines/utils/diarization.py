@@ -111,11 +111,7 @@ class SpeakerDiarizationMixin:
         )
         mapped_hypothesis = hypothesis.rename_labels(mapping=mapping)
 
-        if return_mapping:
-            return mapped_hypothesis, mapping
-
-        else:
-            return mapped_hypothesis
+        return (mapped_hypothesis, mapping) if return_mapping else mapped_hypothesis
 
     # TODO: get rid of onset/offset (binarization should be applied before calling speaker_count)
     # TODO: get rid of warm-up parameter (trimming should be applied before calling speaker_count)

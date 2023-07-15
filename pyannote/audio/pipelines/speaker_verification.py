@@ -615,7 +615,7 @@ def main(
 
     y_true, y_pred = [], []
 
-    emb = dict()
+    emb = {}
 
     trials = getattr(protocol, f"{subset}_trial")()
 

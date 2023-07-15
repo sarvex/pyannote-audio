@@ -30,13 +30,13 @@ sha = "Unknown"
 if os.getenv("BUILD_VERSION"):
     version = os.getenv("BUILD_VERSION")
 elif sha != "Unknown":
-    version += "+" + sha[:7]
-print("-- Building version " + version)
+    version += f"+{sha[:7]}"
+print(f"-- Building version {version}")
 
 version_path = ROOT_DIR / "pyannote" / "audio" / "version.py"
 
 with open(version_path, mode="w", encoding="utf-8") as f:
-    f.write("__version__ = '{}'\n".format(version))
+    f.write(f"__version__ = '{version}'\n")
 
 if __name__ == "__main__":
     setup(

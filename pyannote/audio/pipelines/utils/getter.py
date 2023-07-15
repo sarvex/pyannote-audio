@@ -190,10 +190,7 @@ def get_devices(needs: int = None):
 
     if num_gpus == 0:
         devices = [torch.device("cpu")]
-        if needs is None:
-            return devices
-        return devices * needs
-
+        return devices if needs is None else devices * needs
     devices = [torch.device(f"cuda:{index:d}") for index in range(num_gpus)]
     if needs is None:
         return devices

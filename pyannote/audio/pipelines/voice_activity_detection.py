@@ -216,9 +216,7 @@ class VoiceActivityDetection(Pipeline):
         return DetectionErrorRate(collar=0.0, skip_overlap=False)
 
     def get_direction(self):
-        if self.fscore:
-            return "maximize"
-        return "minimize"
+        return "maximize" if self.fscore else "minimize"
 
 
 class AdaptiveVoiceActivityDetection(Pipeline):
@@ -372,6 +370,4 @@ class AdaptiveVoiceActivityDetection(Pipeline):
         return DetectionErrorRate(collar=0.0, skip_overlap=False)
 
     def get_direction(self):
-        if self.fscore:
-            return "maximize"
-        return "minimize"
+        return "maximize" if self.fscore else "minimize"

@@ -288,16 +288,9 @@ class OverlappedSpeechDetection(Pipeline):
         precision, recall, _ = fmeasure.compute_metrics()
 
         if self.precision is not None:
-            if precision < self.precision:
-                return precision - self.precision
-            else:
-                return recall
-
+            return precision - self.precision if precision < self.precision else recall
         elif self.recall is not None:
-            if recall < self.recall:
-                return recall - self.recall
-            else:
-                return precision
+            return recall - self.recall if recall < self.recall else precision
 
     def get_direction(self):
         return "maximize"

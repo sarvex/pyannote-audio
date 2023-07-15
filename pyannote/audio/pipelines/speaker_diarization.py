@@ -257,7 +257,7 @@ class SpeakerDiarization(SpeakerDiarizationMixin, Pipeline):
             # we only re-use embeddings if they were extracted based on the same value of the
             # "segmentation.threshold" hyperparameter or if the segmentation model relies on
             # `powerset` mode
-            cache = file.get("training_cache/embeddings", dict())
+            cache = file.get("training_cache/embeddings", {})
             if ("embeddings" in cache) and (
                 self._segmentation.model.specifications.powerset
                 or (cache["segmentation.threshold"] == self.segmentation.threshold)
@@ -313,14 +313,11 @@ class SpeakerDiarization(SpeakerDiarizationMixin, Pipeline):
                 for mask, clean_mask in zip(masks.T, clean_masks.T):
                     # mask: (num_frames, ) np.ndarray
 
-                    if np.sum(clean_mask) > min_num_frames:
-                        used_mask = clean_mask
-                    else:
-                        used_mask = mask
-
+                    used_mask = clean_mask if np.sum(clean_mask) > min_num_frames else mask
                     yield waveform[None], torch.from_numpy(used_mask)[None]
-                    # w: (1, 1, num_samples) torch.Tensor
-                    # m: (1, num_frames) torch.Tensor
+                                # w: (1, 1, num_samples) torch.Tensor
+                                # m: (1, num_frames) torch.Tensor
+
 
         batches = batchify(
             iter_waveform_and_mask(),
@@ -571,10 +568,7 @@ class SpeakerDiarization(SpeakerDiarizationMixin, Pipeline):
         else:
             # when reference is not available, rename hypothesized speakers
             # to human-readable SPEAKER_00, SPEAKER_01, ...
-            mapping = {
-                label: expected_label
-                for label, expected_label in zip(diarization.labels(), self.classes())
-            }
+            mapping = dict(zip(diarization.labels(), self.classes()))
 
         diarization = diarization.rename_labels(mapping=mapping)
 

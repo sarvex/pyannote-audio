@@ -324,7 +324,7 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
         #
         chunk = Segment(start_time, start_time + duration)
 
-        sample = dict()
+        sample = {}
         sample["X"], _ = self.model.audio.crop(file, chunk, duration=duration)
 
         # gather all annotations of current file
@@ -344,9 +344,6 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
         # get list and number of labels for current scope
         labels = list(np.unique(chunk_annotations[label_scope_key]))
         num_labels = len(labels)
-
-        if num_labels > self.max_speakers_per_chunk:
-            pass
 
         # initial frame-level targets
         y = np.zeros((self.model.example_output.num_frames, num_labels), dtype=np.uint8)
@@ -408,10 +405,6 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
                     mode="constant",
                 )
 
-            else:
-                # we have exactly the right number of speakers
-                pass
-
             collated_y.append(y)
 
         return torch.from_numpy(np.stack(collated_y))
@@ -439,25 +432,23 @@ class SpeakerDiarization(SegmentationTaskMixin, Task):
             Permutation-invariant segmentation loss
         """
 
-        if self.specifications.powerset:
-            # `clamp_min` is needed to set non-speech weight to 1.
-            class_weight = (
-                torch.clamp_min(self.model.powerset.cardinality, 1.0)
-                if self.weigh_by_cardinality
-                else None
-            )
-            seg_loss = nll_loss(
-                permutated_prediction,
-                torch.argmax(target, dim=-1),
-                class_weight=class_weight,
-                weight=weight,
-            )
-        else:
-            seg_loss = binary_cross_entropy(
+        if not self.specifications.powerset:
+            return binary_cross_entropy(
                 permutated_prediction, target.float(), weight=weight
             )
 
-        return seg_loss
+        # `clamp_min` is needed to set non-speech weight to 1.
+        class_weight = (
+            torch.clamp_min(self.model.powerset.cardinality, 1.0)
+            if self.weigh_by_cardinality
+            else None
+        )
+        return nll_loss(
+            permutated_prediction,
+            torch.argmax(target, dim=-1),
+            class_weight=class_weight,
+            weight=weight,
+        )
 
     def voice_activity_detection_loss(
         self,

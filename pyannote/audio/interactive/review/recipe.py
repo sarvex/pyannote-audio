@@ -47,11 +47,9 @@ def review_stream(
             ]
             labels = [label for ann in list_annotations for label in ann.labels()]
             labels = list(dict.fromkeys(labels))
-            files_annotations[filename] = (list_annotations, labels)
         else:
             list_annotations = [ann[filename] for ann in annotations]
-            files_annotations[filename] = (list_annotations, labels)
-
+        files_annotations[filename] = (list_annotations, labels)
     for file, excerpt in chunks:
         path = file["path"]
         filename = file["text"]

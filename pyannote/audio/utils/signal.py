@@ -291,12 +291,9 @@ class Binarize:
                         start = t
                         is_active = False
 
-                # currently inactive
-                else:
-                    # switching from inactive to active
-                    if y > self.onset:
-                        start = t
-                        is_active = True
+                elif y > self.onset:
+                    start = t
+                    is_active = True
 
             # if active at the end, add final region
             if is_active:
@@ -367,7 +364,7 @@ class Peak:
         boundaries = np.hstack([[frames[0].start], peak_time, [frames[num_frames].end]])
 
         segmentation = Timeline()
-        for i, (start, end) in enumerate(pairwise(boundaries)):
+        for start, end in pairwise(boundaries):
             segment = Segment(start, end)
             segmentation.add(segment)
 

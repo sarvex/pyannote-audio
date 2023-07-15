@@ -89,8 +89,8 @@ class DeriveMetaLabels:
         intersections: Optional[Dict[str, List[str]]] = None,
     ):
         self.classes: Set[str] = set(classes)
-        self.unions = unions if unions is not None else dict()
-        self.intersections = intersections if intersections is not None else dict()
+        self.unions = unions if unions is not None else {}
+        self.intersections = intersections if intersections is not None else {}
 
     @property
     def all_classes(self) -> List[str]:

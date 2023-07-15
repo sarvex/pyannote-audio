@@ -166,7 +166,7 @@ class MultiLabelSegmentation(SegmentationTaskMixin, Task):
 
         chunk = Segment(start_time, start_time + duration)
 
-        sample = dict()
+        sample = {}
         sample["X"], _ = self.model.audio.crop(file, chunk, duration=duration)
         # gather all annotations of current file
         annotations = self.annotations[self.annotations["file_id"] == file_id]

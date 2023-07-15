@@ -144,7 +144,7 @@ class Inference(BaseInference):
 
         self.skip_conversion = skip_conversion
 
-        conversion = list()
+        conversion = []
         for s in specifications:
             if s.powerset and not skip_conversion:
                 c = Powerset(len(s.classes), s.powerset_max_classes)
@@ -297,7 +297,7 @@ class Inference(BaseInference):
             last_chunk = F.pad(last_chunk, (0, last_pad))
 
         def __empty_list(**kwargs):
-            return list()
+            return []
 
         outputs: Union[
             List[np.ndarray], Tuple[List[np.ndarray]]

@@ -250,10 +250,7 @@ def preview(
 
     plt.close(fig)
 
-    if not display:
-        return video_path
-
-    return IPythonVideo(video_path, embed=True)
+    return video_path if not display else IPythonVideo(video_path, embed=True)
 
 
 def BROKEN_preview_training_samples(

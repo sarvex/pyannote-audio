@@ -49,9 +49,7 @@ class SegmentationTaskMixin:
     """Methods common to most segmentation tasks"""
 
     def get_file(self, file_id):
-        file = dict()
-
-        file["audio"] = str(self.audios[file_id], encoding="utf-8")
+        file = {"audio": str(self.audios[file_id], encoding="utf-8")}
 
         _audio_info = self.audio_infos[file_id]
         _encoding = self.audio_encodings[file_id]
@@ -87,24 +85,24 @@ class SegmentationTaskMixin:
             metadata_unique_values["scope"] = Scopes
 
         elif isinstance(self.protocol, SegmentationProtocol):
-            classes = getattr(self, "classes", list())
+            classes = getattr(self, "classes", [])
 
         # make sure classes attribute exists (and set to None if it did not exist)
         self.classes = getattr(self, "classes", None)
         if self.classes is None:
-            classes = list()
-            # metadata_unique_values["classes"] = list(classes)
+            classes = []
+                # metadata_unique_values["classes"] = list(classes)
 
-        audios = list()  # list of path to audio files
-        audio_infos = list()
-        audio_encodings = list()
-        metadata = list()  # list of metadata
+        audios = []
+        audio_infos = []
+        audio_encodings = []
+        metadata = []
 
-        annotated_duration = list()  # total duration of annotated regions (per file)
-        annotated_regions = list()  # annotated regions
-        annotations = list()  # actual annotations
-        annotated_classes = list()  # list of annotated classes (per file)
-        unique_labels = list()
+        annotated_duration = []
+        annotated_regions = []
+        annotations = []
+        annotated_classes = []
+        unique_labels = []
 
         if self.has_validation:
             files_iter = itertools.chain(
@@ -114,16 +112,14 @@ class SegmentationTaskMixin:
             files_iter = self.protocol.train()
 
         for file_id, file in enumerate(files_iter):
-            # gather metadata and update metadata_unique_values so that each metadatum
-            # (e.g. source database or label) is represented by an integer.
-            metadatum = dict()
-
             # keep track of source database and subset (train, development, or test)
             if file["database"] not in metadata_unique_values["database"]:
                 metadata_unique_values["database"].append(file["database"])
-            metadatum["database"] = metadata_unique_values["database"].index(
-                file["database"]
-            )
+            metadatum = {
+                "database": metadata_unique_values["database"].index(
+                    file["database"]
+                )
+            }
             metadatum["subset"] = Subsets.index(file["subset"])
 
             # keep track of speaker label scope (file, database, or global) for speaker diarization protocols
@@ -149,12 +145,8 @@ class SegmentationTaskMixin:
                         [classes.index(klass) for klass in local_classes]
                     )
 
-                # if task was initialized with a fixed list of classes,
-                # we make sure that all files use a subset of these classes
-                # if they don't, we issue a warning and ignore the extra classes
                 else:
-                    extra_classes = set(local_classes) - set(self.classes)
-                    if extra_classes:
+                    if extra_classes := set(local_classes) - set(self.classes):
                         warnings.warn(
                             f"Ignoring extra classes ({', '.join(extra_classes)}) found for file {file['uri']} ({file['database']}). "
                         )
@@ -165,19 +157,17 @@ class SegmentationTaskMixin:
                         ]
                     )
 
-            remaining_metadata_keys = set(file) - set(
-                [
-                    "uri",
-                    "database",
-                    "subset",
-                    "audio",
-                    "torchaudio.info",
-                    "scope",
-                    "classes",
-                    "annotation",
-                    "annotated",
-                ]
-            )
+            remaining_metadata_keys = set(file) - {
+                "uri",
+                "database",
+                "subset",
+                "audio",
+                "torchaudio.info",
+                "scope",
+                "classes",
+                "annotation",
+                "annotated",
+            }
 
             # keep track of any other (integer or string) metadata provided by the protocol
             # (e.g. a "domain" key for domain-adversarial training)
@@ -200,10 +190,10 @@ class SegmentationTaskMixin:
 
             metadata.append(metadatum)
 
-            database_unique_labels = list()
+            database_unique_labels = []
 
             # reset list of file-scoped labels
-            file_unique_labels = list()
+            file_unique_labels = []
 
             # path to audio file
             audios.append(str(file["audio"]))
@@ -357,7 +347,7 @@ class SegmentationTaskMixin:
         if not self.has_validation:
             return
 
-        validation_chunks = list()
+        validation_chunks = []
 
         # obtain indexes of files in the validation subset
         validation_file_ids = np.where(
@@ -483,11 +473,11 @@ class SegmentationTaskMixin:
 
         else:
             # create a subchunk generator for each combination of "balance" keys
-            subchunks = dict()
+            subchunks = {}
             for product in itertools.product(
                 [self.metadata_unique_values[key] for key in balance]
             ):
-                filters = {key: value for key, value in zip(balance, product)}
+                filters = dict(zip(balance, product))
                 subchunks[product] = self.train__iter__helper(rng, **filters)
 
         while True:

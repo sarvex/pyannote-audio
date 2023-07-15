@@ -157,11 +157,11 @@ class Model(pl.LightningModule):
                 "Only regular specifications or tuple of specifications are supported."
             )
 
-        durations = set(s.duration for s in specifications)
+        durations = {s.duration for s in specifications}
         if len(durations) > 1:
             raise ValueError("All tasks must share the same (maximum) duration.")
 
-        min_durations = set(s.min_duration for s in specifications)
+        min_durations = {s.min_duration for s in specifications}
         if len(min_durations) > 1:
             raise ValueError("All tasks must share the same minimum duration.")
 
@@ -221,7 +221,7 @@ class Model(pl.LightningModule):
             self.task.setup_metadata()
 
         # list of layers before adding task-dependent layers
-        before = set((name, id(module)) for name, module in self.named_modules())
+        before = {(name, id(module)) for name, module in self.named_modules()}
 
         # add task-dependent layers (e.g. final classification layer)
         # and re-use original weights when compatible
@@ -235,16 +235,15 @@ class Model(pl.LightningModule):
             )
 
         except RuntimeError as e:
-            if "size mismatch" in str(e):
-                msg = (
-                    "Model has been trained for a different task. For fine tuning or transfer learning, "
-                    "it is recommended to train task-dependent layers for a few epochs "
-                    f"before training the whole model: {self.task_dependent}."
-                )
-                warnings.warn(msg)
-            else:
+            if "size mismatch" not in str(e):
                 raise e
 
+            msg = (
+                "Model has been trained for a different task. For fine tuning or transfer learning, "
+                "it is recommended to train task-dependent layers for a few epochs "
+                f"before training the whole model: {self.task_dependent}."
+            )
+            warnings.warn(msg)
         # move layers that were added by build() to same device as the rest of the model
         for name, module in self.named_modules():
             if (name, id(module)) not in before:
@@ -263,10 +262,10 @@ class Model(pl.LightningModule):
             _ = self.example_output
 
         # list of layers after adding task-dependent layers
-        after = set((name, id(module)) for name, module in self.named_modules())
+        after = {(name, id(module)) for name, module in self.named_modules()}
 
         # list of task-dependent layers
-        self.task_dependent = list(name for name, _ in after - before)
+        self.task_dependent = [name for name, _ in after - before]
 
     def on_save_checkpoint(self, checkpoint):
         # put everything pyannote.audio-specific under pyannote.audio
@@ -373,15 +372,15 @@ class Model(pl.LightningModule):
         """Helper function for freeze_up_to and unfreeze_up_to"""
 
         tokens = module_name.split(".")
-        updated_modules = list()
+        updated_modules = []
 
         for name, module in ModelSummary(self, max_depth=-1).named_modules:
             name_tokens = name.split(".")
-            matching_tokens = list(
+            matching_tokens = [
                 token
                 for token, other_token in zip(name_tokens, tokens)
                 if token == other_token
-            )
+            ]
 
             # if module is A.a.1 & name is A.a, we do not want to freeze the whole A.a module
             # because it might contain other modules like A.a.2 and A.a.3
@@ -461,7 +460,7 @@ class Model(pl.LightningModule):
     ) -> List[Text]:
         """Helper function for freeze_by_name and unfreeze_by_name"""
 
-        updated_modules = list()
+        updated_modules = []
 
         # Force modules to be a list
         if isinstance(modules, str):
@@ -478,8 +477,7 @@ class Model(pl.LightningModule):
             # keep track of updated modules
             updated_modules.append(name)
 
-        missing = list(set(modules) - set(updated_modules))
-        if missing:
+        if missing := list(set(modules) - set(updated_modules)):
             raise ValueError(f"Could not find the following modules: {missing}.")
 
         return updated_modules

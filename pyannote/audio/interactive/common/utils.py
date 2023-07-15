@@ -111,12 +111,9 @@ def source_to_files(source: Path) -> List[Dict]:
     Convert a directory or a file path to a list of files object for prodigy
     """
     if source.is_dir():
-        files = ProdigyAudioLoader(source)
-    else:
-        name = source.stem
-        files = [{"path": source, "text": name, "meta": {"file": source}}]
-
-    return files
+        return ProdigyAudioLoader(source)
+    name = source.stem
+    return [{"path": source, "text": name, "meta": {"file": source}}]
 
 
 def get_chunks(source: Path, chunk_duration: Optional[float] = None):

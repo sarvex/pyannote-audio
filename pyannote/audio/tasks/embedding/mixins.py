@@ -79,7 +79,7 @@ class SupervisedRepresentationLearningTaskMixin:
         # loop over the training set, remove annotated regions shorter than
         # chunk duration, and keep track of the reference annotations, per class.
 
-        self._train = dict()
+        self._train = {}
 
         desc = f"Loading {self.protocol.name} training labels"
         for f in tqdm(iterable=self.protocol.train(), desc=desc, unit="file"):
@@ -100,7 +100,7 @@ class SupervisedRepresentationLearningTaskMixin:
 
                 # add class to the list of classes
                 if klass not in self._train:
-                    self._train[klass] = list()
+                    self._train[klass] = []
 
                 self._train[klass].append(
                     {
@@ -254,7 +254,7 @@ class SupervisedRepresentationLearningTaskMixin:
         if isinstance(self.protocol, SpeakerVerificationProtocol):
             trial = self._validation[idx]
 
-            data = dict()
+            data = {}
             for idx in [1, 2]:
                 file = trial[f"file{idx:d}"]
                 duration = self.model.audio.get_duration(file)
@@ -275,9 +275,6 @@ class SupervisedRepresentationLearningTaskMixin:
             data["y"] = trial["reference"]
 
             return data
-
-        elif isinstance(self.protocol, SpeakerDiarizationProtocol):
-            pass
 
     def val__len__(self):
         if isinstance(self.protocol, SpeakerVerificationProtocol):

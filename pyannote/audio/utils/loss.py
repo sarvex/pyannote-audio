@@ -81,13 +81,12 @@ def binary_cross_entropy(
     if weight is None:
         return F.binary_cross_entropy(prediction, target.float())
 
-    else:
-        # interpolate weight
-        weight = interpolate(target, weight=weight)
+    # interpolate weight
+    weight = interpolate(target, weight=weight)
 
-        return F.binary_cross_entropy(
-            prediction, target.float(), weight=weight.expand(target.shape)
-        )
+    return F.binary_cross_entropy(
+        prediction, target.float(), weight=weight.expand(target.shape)
+    )
 
 
 def mse_loss(
@@ -115,17 +114,14 @@ def mse_loss(
         target = target.unsqueeze(dim=2)
 
     losses = F.mse_loss(prediction, target.float(), reduction="none")
-    # (batch_size, num_frames, num_classes)
-
     if weight is None:
         return torch.mean(losses)
 
-    else:
-        # interpolate weight
-        weight = interpolate(target, weight=weight).expand(losses.shape)
-        # (batch_size, num_frames, num_classes)
+    # interpolate weight
+    weight = interpolate(target, weight=weight).expand(losses.shape)
+    # (batch_size, num_frames, num_classes)
 
-        return torch.sum(losses * weight) / torch.sum(weight)
+    return torch.sum(losses * weight) / torch.sum(weight)
 
 
 def nll_loss(
@@ -163,14 +159,11 @@ def nll_loss(
         # (num_classes, )
         reduction="none",
     ).view(target.shape)
-    # (batch_size, num_frames)
-
     if weight is None:
         return torch.mean(losses)
 
-    else:
-        # interpolate weight
-        weight = interpolate(target, weight=weight).squeeze(dim=2)
-        # (batch_size, num_frames)
+    # interpolate weight
+    weight = interpolate(target, weight=weight).squeeze(dim=2)
+    # (batch_size, num_frames)
 
-        return torch.sum(losses * weight) / torch.sum(weight)
+    return torch.sum(losses * weight) / torch.sum(weight)

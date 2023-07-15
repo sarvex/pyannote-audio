@@ -9,10 +9,7 @@ bp = breakpoint
 
 
 def capitalise(s):
-    news = ""
-    for word in s.split("_"):
-        news += word.capitalize()
-    return news
+    return "".join(word.capitalize() for word in s.split("_"))
 
 
 def process_dir(level, p):

@@ -217,9 +217,7 @@ class OptimalDiarizationErrorRateThreshold(OptimalDiarizationErrorRate):
             self.speech_total,
         )
         _, opt_threshold_idx = torch.min(der, dim=0)
-        opt_threshold = self.threshold[opt_threshold_idx]
-
-        return opt_threshold
+        return self.threshold[opt_threshold_idx]
 
 
 class OptimalSpeakerConfusionRate(OptimalDiarizationErrorRate):

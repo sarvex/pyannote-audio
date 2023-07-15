@@ -378,9 +378,8 @@ class Audio:
                     f"requested chunk [{segment.start:.6f}s, {segment.end:.6f}s] (frames #{start_frame:d} to #{end_frame:d}) "
                     f"lies outside of {file.get('uri', 'in-memory')} file bounds [0., {frames / sample_rate:.6f}s] ({frames:d} frames)."
                 )
-            else:
-                end_frame = min(end_frame, frames)
-                start_frame = end_frame - num_frames
+            end_frame = min(end_frame, frames)
+            start_frame = end_frame - num_frames
 
             if start_frame < 0:
                 raise ValueError(

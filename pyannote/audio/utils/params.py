@@ -5,5 +5,5 @@
 def merge_dict(defaults: dict, custom: dict = None):
     params = dict(defaults)
     if custom is not None:
-        params.update(custom)
+        params |= custom
     return params

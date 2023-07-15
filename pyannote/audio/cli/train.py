@@ -159,10 +159,7 @@ def train(cfg: DictConfig) -> Optional[float]:
     # this can be used for hyper-parameter optimization with Hydra sweepers
     if monitor is not None:
         best_monitor = float(checkpoint.best_model_score)
-        if direction == "min":
-            return best_monitor
-        else:
-            return -best_monitor
+        return best_monitor if direction == "min" else -best_monitor
 
 
 if __name__ == "__main__":

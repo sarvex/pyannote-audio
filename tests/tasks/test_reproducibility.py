@@ -21,11 +21,8 @@ def create_dl(model, task):
 
 
 def get_next5(dl):
-    last5 = []
     it = iter(dl)
-    for i in range(5):
-        last5.append(next(it))
-    return last5
+    return [next(it) for _ in range(5)]
 
 
 def test_seeding_ensures_data_loaders():
